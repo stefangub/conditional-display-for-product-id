@@ -2,17 +2,17 @@
 /**
  * Plugin Name: Conditional display for Product ID in WooCommerce
  * Description: A custom block that displays content conditionally based on whether a user has purchased a specific WooCommerce product.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Stefan Van der Vyver
  * Author URI: https://github.com/stefangub
  * License: Split License
  * License URI: http://codecanyon.net/licenses/standard
  * Text Domain: cdpid-woocommerce
  * Domain Path: /languages
- * Requires at least: 5.0
+ * Requires at least: 5.8
  * Requires PHP: 7.2
- * WC requires at least: 3.0
- * WC tested up to: 7.0
+ * WC requires at least: 7.1
+ * WC tested up to: 7.9
  *
  * This plugin is released under a commercial license and is intended for use in accordance with the CodeCanyon/Envato licensing terms.
  * Parts of this plugin may incorporate GPL-licensed code due to WordPress ecosystem requirements.
@@ -23,6 +23,16 @@
 if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
+
+// Declare compatibility with HPOS
+function cdpid_declare_hpos_compatibility() {
+    if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
+        \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
+    }
+}
+add_action( 'before_woocommerce_init', 'cdpid_declare_hpos_compatibility' );
+
+// Rest of your plugin code...
 
 function cdpid_register_block() {
     if (!function_exists('register_block_type')) {
@@ -65,37 +75,57 @@ function cdpid_register_block() {
 add_action('init', 'cdpid_register_block');
 
 function cdpid_render_block($attributes, $content) {
-    if (!is_user_logged_in() || !function_exists('wc_customer_bought_product')) {
-        return '<div class="conditional-display-product-id-block">' . $content . '</div>';
+    // Check if WooCommerce is active
+    if (!class_exists('WooCommerce')) {
+        return '<div class="conditional-display-product-id-block cdpid-error">' . esc_html__('WooCommerce is required for this block.', 'cdpid-woocommerce') . '</div>';
     }
 
-    $product_id = isset($attributes['productId']) ? intval($attributes['productId']) : 0;
+    if (!is_user_logged_in()) {
+        return '<div class="conditional-display-product-id-block cdpid-not-logged-in">' . wp_kses_post($content) . '</div>';
+    }
+
+    $product_id = isset($attributes['productId']) ? absint($attributes['productId']) : 0;
     $alternate_text = isset($attributes['alternateText']) ? sanitize_text_field($attributes['alternateText']) : esc_html__('Alternate text for this product.', 'cdpid-woocommerce');
-    $display_if_purchased = isset($attributes['displayIfPurchased']) ? $attributes['displayIfPurchased'] : true;
-    $display_if_not_purchased = isset($attributes['displayIfNotPurchased']) ? $attributes['displayIfNotPurchased'] : true;
+    $display_if_purchased = isset($attributes['displayIfPurchased']) ? (bool) $attributes['displayIfPurchased'] : true;
+    $display_if_not_purchased = isset($attributes['displayIfNotPurchased']) ? (bool) $attributes['displayIfNotPurchased'] : true;
     
     if ($product_id === 0) {
-        return '';
+        return '<div class="conditional-display-product-id-block cdpid-no-product">' . esc_html__('No product ID specified.', 'cdpid-woocommerce') . '</div>';
     }
 
+    // Check if the user has purchased the product
     $current_user = wp_get_current_user();
-    $user_purchased = wc_customer_bought_product($current_user->user_email, $current_user->ID, $product_id);
+    $user_purchased = cdpid_check_user_purchased($current_user->user_email, $current_user->ID, $product_id);
     
-    if ($user_purchased) {
-        if ($display_if_purchased) {
-            return '<div class="conditional-display-product-id-block">' . $content . '</div>';
-        } else {
-            return '<div class="conditional-display-product-id-block"><p>' . $alternate_text . '</p></div>';
-        }
+    $output = '<div class="conditional-display-product-id-block" data-product-id="' . esc_attr($product_id) . '">';
+    
+    if ($user_purchased && $display_if_purchased) {
+        $output .= wp_kses_post($content);
+    } elseif (!$user_purchased && $display_if_not_purchased) {
+        $output .= wp_kses_post($content);
     } else {
-        if ($display_if_not_purchased) {
-            return '<div class="conditional-display-product-id-block">' . $content . '</div>';
-        } else {
-            return '<div class="conditional-display-product-id-block"><p>' . $alternate_text . '</p></div>';
-        }
+        $output .= '<p>' . esc_html($alternate_text) . '</p>';
     }
+    
+    $output .= '</div>';
+    
+    return $output;
 }
 
+// Helper function to check if user has purchased product with caching
+function cdpid_check_user_purchased($user_email, $user_id, $product_id) {
+    $cache_key = 'cdpid_user_' . $user_id . '_product_' . $product_id;
+    $user_purchased = wp_cache_get($cache_key);
+    
+    if (false === $user_purchased) {
+        $user_purchased = wc_customer_bought_product($user_email, $user_id, $product_id);
+        wp_cache_set($cache_key, $user_purchased, '', 3600); // Cache for 1 hour
+    }
+    
+    return $user_purchased;
+}
+
+// Add a custom block category for the Conditional Display for Product ID block
 function cdpid_add_block_category($categories, $post) {
     return array_merge(
         $categories,
