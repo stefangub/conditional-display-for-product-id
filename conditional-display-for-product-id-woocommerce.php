@@ -1,4 +1,7 @@
+
 <?php
+use Automattic\WooCommerce\Utilities\FeaturesUtil;
+
 /**
  * Plugin Name: Conditional display for Product ID in WooCommerce
  * Description: A custom block that displays content conditionally based on whether a user has purchased a specific WooCommerce product.
@@ -25,7 +28,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Declare compatibility with HPOS
-function cdpid_declare_hpos_compatibility() {
+    if ( class_exists( FeaturesUtil::class ) ) {
     if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
         \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
     }
