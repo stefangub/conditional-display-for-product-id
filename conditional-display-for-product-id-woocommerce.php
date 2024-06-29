@@ -1,6 +1,4 @@
-
 <?php
-use Automattic\WooCommerce\Utilities\FeaturesUtil;
 
 /**
  * Plugin Name: Conditional display for Product ID in WooCommerce
